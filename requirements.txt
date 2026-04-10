@@ -1,0 +1,13 @@
+streamlit
+langchain
+langchain-community
+langchain-openai
+langchain-text-splitters
+chromadb
+sentence-transformers
+pymupdf
+pandas
+python-dotenv
+openai
+tiktoken
+langchain-ollama
