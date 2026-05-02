@@ -1,13 +1,46 @@
 from collections import defaultdict
+import os
+
+from dotenv import load_dotenv
 from langchain_ollama import ChatOllama
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_groq import ChatGroq
+
 from src.prompts import SYSTEM_PROMPT, COMPARISON_PROMPT
 
+load_dotenv()
 
-def get_llm():
-    return ChatOllama(
-        model="llama3",
-        temperature=0
-    )
+
+def get_llm(model_name="ollama"):
+    """
+    Select which LLM to use:
+    - ollama: local model
+    - gemini: Google Gemini API
+    - groq: Groq LLaMA API
+    """
+
+    if model_name == "ollama":
+        return ChatOllama(
+            model="llama3",
+            temperature=0
+        )
+
+    elif model_name == "gemini":
+        return ChatGoogleGenerativeAI(
+            model="gemini-3.1-flash-lite-preview",
+            google_api_key=os.getenv("GOOGLE_API_KEY"),
+            temperature=0.2
+        )
+
+    elif model_name == "groq":
+        return ChatGroq(
+            model="llama-3.1-8b-instant",
+            groq_api_key=os.getenv("GROQ_API_KEY"),
+            temperature=0.2
+        )
+
+    else:
+        raise ValueError("Invalid model_name. Choose: ollama, gemini, or groq.")
 
 
 def format_context(docs):
@@ -35,11 +68,13 @@ def retrieve_balanced_documents(vector_store, query: str, per_paper: int = 2, to
     docs = retriever.invoke(query)
 
     grouped = defaultdict(list)
+
     for doc in docs:
         paper_name = doc.metadata.get("paper_name", "Unknown")
         grouped[paper_name].append(doc)
 
     balanced_docs = []
+
     for _, paper_docs in grouped.items():
         balanced_docs.extend(paper_docs[:per_paper])
 
@@ -70,7 +105,8 @@ def answer_question(
     chat_history=None,
     k=None,
     per_paper: int = 2,
-    total_k: int = 12
+    total_k: int = 12,
+    model_name: str = "ollama"
 ):
     docs = retrieve_balanced_documents(
         vector_store=vector_store,
@@ -104,7 +140,7 @@ Retrieved Context:
 Answer:
 """
 
-    llm = get_llm()
+    llm = get_llm(model_name)
     response = llm.invoke(prompt)
 
     return {
@@ -119,7 +155,8 @@ def compare_papers(
     chat_history=None,
     k=None,
     per_paper: int = 3,
-    total_k: int = 15
+    total_k: int = 15,
+    model_name: str = "ollama"
 ):
     docs = retrieve_balanced_documents(
         vector_store=vector_store,
@@ -152,7 +189,7 @@ Retrieved Context:
 Structured Comparison:
 """
 
-    llm = get_llm()
+    llm = get_llm(model_name)
     response = llm.invoke(prompt)
 
     return {
@@ -161,8 +198,12 @@ Structured Comparison:
     }
 
 
-def summarize_each_paper(vector_store, paper_names):
-    llm = get_llm()
+def summarize_each_paper(
+    vector_store,
+    paper_names,
+    model_name: str = "ollama"
+):
+    llm = get_llm(model_name)
     summaries = []
 
     for paper_name in paper_names:
@@ -197,13 +238,20 @@ Context:
 
 Summary:
 """
+
         response = llm.invoke(prompt)
         summaries.append(f"### {paper_name}\n{response.content}")
 
     return "\n\n".join(summaries)
 
 
-def generate_comparison_table(vector_store, paper_names, per_paper: int = 3, total_k: int = 18):
+def generate_comparison_table(
+    vector_store,
+    paper_names,
+    per_paper: int = 3,
+    total_k: int = 18,
+    model_name: str = "ollama"
+):
     """
     Generate a structured JSON comparison table with one row per paper.
     """
@@ -260,7 +308,7 @@ Retrieved Context:
 JSON:
 """
 
-    llm = get_llm()
+    llm = get_llm(model_name)
     response = llm.invoke(prompt)
 
     return {

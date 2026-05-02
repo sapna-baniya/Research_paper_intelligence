@@ -13,6 +13,7 @@ from src.rag_pipeline import (
     generate_comparison_table
 )
 from src.compare import build_source_table, parse_comparison_json
+from src.paper_recommender import recommend_related_papers
 
 load_dotenv()
 
@@ -54,19 +55,16 @@ st.markdown("""
     font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
-/* Main container */
 .block-container {
     max-width: 1450px;
     padding-top: 1.6rem;
     padding-bottom: 2rem;
 }
 
-/* Hide default streamlit chrome a bit */
 #MainMenu, footer {
     visibility: hidden;
 }
 
-/* Sidebar */
 [data-testid="stSidebar"] {
     background:
         linear-gradient(180deg, rgba(7,11,24,0.96), rgba(15,23,42,0.96));
@@ -100,7 +98,6 @@ st.markdown("""
     line-height: 1.45;
 }
 
-/* Hero */
 .hero-shell {
     position: relative;
     overflow: hidden;
@@ -167,7 +164,6 @@ st.markdown("""
     font-size: 0.94rem;
 }
 
-/* Cards */
 .glass-card {
     background: rgba(15,23,42,0.64);
     backdrop-filter: blur(14px);
@@ -187,7 +183,6 @@ st.markdown("""
     margin-bottom: 16px;
 }
 
-/* Section title */
 .section-title {
     font-size: 1.15rem;
     font-weight: 800;
@@ -200,7 +195,6 @@ st.markdown("""
     margin-bottom: 0.8rem;
 }
 
-/* Metric cards */
 .metric-wrap {
     background: linear-gradient(180deg, rgba(17,24,39,0.92), rgba(15,23,42,0.92));
     border: 1px solid rgba(255,255,255,0.07);
@@ -221,7 +215,6 @@ st.markdown("""
     letter-spacing: -0.02em;
 }
 
-/* Buttons */
 .stButton > button {
     width: 100%;
     border: none;
@@ -248,7 +241,6 @@ st.markdown("""
     box-shadow: 0 10px 24px rgba(8,145,178,0.22);
 }
 
-/* Tabs */
 .stTabs [data-baseweb="tab-list"] {
     gap: 12px;
     margin-bottom: 14px;
@@ -267,7 +259,6 @@ st.markdown("""
     box-shadow: 0 6px 18px rgba(59,130,246,0.12);
 }
 
-/* Inputs */
 .stTextInput > div > div > input,
 .stTextArea textarea,
 [data-testid="stFileUploader"] section,
@@ -290,7 +281,6 @@ st.markdown("""
     background: linear-gradient(180deg, rgba(5,8,22,0.0), rgba(5,8,22,0.96) 40%);
 }
 
-/* Chat */
 [data-testid="stChatMessage"] {
     background: rgba(255,255,255,0.04);
     border: 1px solid rgba(255,255,255,0.06);
@@ -304,19 +294,16 @@ st.markdown("""
     margin-bottom: 0.6rem;
 }
 
-/* Expander */
 .streamlit-expanderHeader {
     background: rgba(15,23,42,0.84);
     border-radius: 14px;
 }
 
-/* Info/warn/error alerts */
 .stAlert {
     border-radius: 18px;
     border: 1px solid rgba(255,255,255,0.07);
 }
 
-/* Footer */
 .footer-card {
     margin-top: 22px;
     border-radius: 22px;
@@ -328,7 +315,6 @@ st.markdown("""
     text-align: center;
 }
 
-/* Responsive */
 @media (max-width: 900px) {
     .hero-title {
         font-size: 2.2rem;
@@ -373,6 +359,12 @@ with st.sidebar:
     top_k = st.slider("Retrieved chunks (Top-K)", 2, 20, 10)
     chunk_size = st.slider("Chunk size", 500, 1500, 1000, 100)
     chunk_overlap = st.slider("Chunk overlap", 50, 400, 200, 50)
+
+    # NEW: LLM selector
+    model_choice = st.selectbox(
+        "Choose LLM",
+        ["ollama", "gemini", "groq"]
+    )
 
     st.markdown("---")
     st.markdown("### Suggested Prompts")
@@ -526,11 +518,13 @@ if st.session_state["papers_processed"]:
 # Main app area
 # -------------------------------------------------
 if st.session_state["papers_processed"] and st.session_state["vector_store"] is not None:
-    tab1, tab2, tab3, tab4 = st.tabs([
+    tab1, tab2, tab3, tab4,tab5 = st.tabs([
         "💬 Chat",
         "📑 Compare",
         "⚡ Quick Analysis",
-        "📋 Comparison Table"
+        "📋 Comparison Table",
+        "🔍 Related Papers"
+
     ])
 
     # Chat tab
@@ -571,14 +565,15 @@ if st.session_state["papers_processed"] and st.session_state["vector_store"] is 
                 st.markdown(user_question)
 
             with st.chat_message("assistant"):
-                with st.spinner("Thinking..."):
+                with st.spinner(f"Thinking with {model_choice}..."):
                     try:
                         result = answer_question(
                             st.session_state["vector_store"],
                             user_question,
                             chat_history=st.session_state["chat_history"],
                             per_paper=2,
-                            total_k=max(top_k, 12)
+                            total_k=max(top_k, 12),
+                            model_name=model_choice
                         )
 
                         st.markdown(result["answer"])
@@ -624,14 +619,15 @@ if st.session_state["papers_processed"] and st.session_state["vector_store"] is 
             if not comparison_request.strip():
                 st.warning("Please enter a comparison request.")
             else:
-                with st.spinner("Comparing papers..."):
+                with st.spinner(f"Comparing papers with {model_choice}..."):
                     try:
                         result = compare_papers(
                             st.session_state["vector_store"],
                             comparison_request,
                             chat_history=st.session_state["chat_history"],
                             per_paper=3,
-                            total_k=max(top_k, 15)
+                            total_k=max(top_k, 15),
+                            model_name=model_choice
                         )
 
                         st.markdown("### Comparison Result")
@@ -662,14 +658,15 @@ if st.session_state["papers_processed"] and st.session_state["vector_store"] is 
 
         with col1:
             if st.button("Summarize All Papers"):
-                with st.spinner("Generating summary..."):
+                with st.spinner(f"Generating summary with {model_choice}..."):
                     try:
                         result = answer_question(
                             st.session_state["vector_store"],
                             "For each uploaded paper, summarize its objective, method, and main findings. Then provide a combined summary.",
                             chat_history=st.session_state["chat_history"],
                             per_paper=2,
-                            total_k=max(top_k, 12)
+                            total_k=max(top_k, 12),
+                            model_name=model_choice
                         )
                         st.markdown("### Summary")
                         st.write(result["answer"])
@@ -677,14 +674,15 @@ if st.session_state["papers_processed"] and st.session_state["vector_store"] is 
                         st.error(f"Quick summary error: {str(e)}")
 
             if st.button("Extract Datasets"):
-                with st.spinner("Extracting datasets..."):
+                with st.spinner(f"Extracting datasets with {model_choice}..."):
                     try:
                         result = answer_question(
                             st.session_state["vector_store"],
                             "List all datasets mentioned in the uploaded papers and state which paper uses each dataset.",
                             chat_history=st.session_state["chat_history"],
                             per_paper=2,
-                            total_k=max(top_k, 12)
+                            total_k=max(top_k, 12),
+                            model_name=model_choice
                         )
                         st.markdown("### Datasets")
                         st.write(result["answer"])
@@ -692,11 +690,12 @@ if st.session_state["papers_processed"] and st.session_state["vector_store"] is 
                         st.error(f"Dataset extraction error: {str(e)}")
 
             if st.button("Summarize Each Paper"):
-                with st.spinner("Summarizing each paper..."):
+                with st.spinner(f"Summarizing each paper with {model_choice}..."):
                     try:
                         result = summarize_each_paper(
                             st.session_state["vector_store"],
-                            st.session_state["paper_names"]
+                            st.session_state["paper_names"],
+                            model_name=model_choice
                         )
                         st.markdown("### Paper-wise Summary")
                         st.write(result)
@@ -705,14 +704,15 @@ if st.session_state["papers_processed"] and st.session_state["vector_store"] is 
 
         with col2:
             if st.button("Extract Evaluation Metrics"):
-                with st.spinner("Extracting metrics..."):
+                with st.spinner(f"Extracting metrics with {model_choice}..."):
                     try:
                         result = answer_question(
                             st.session_state["vector_store"],
                             "List the evaluation metrics mentioned in the uploaded papers and explain where they are used.",
                             chat_history=st.session_state["chat_history"],
                             per_paper=2,
-                            total_k=max(top_k, 12)
+                            total_k=max(top_k, 12),
+                            model_name=model_choice
                         )
                         st.markdown("### Evaluation Metrics")
                         st.write(result["answer"])
@@ -720,14 +720,15 @@ if st.session_state["papers_processed"] and st.session_state["vector_store"] is 
                         st.error(f"Metric extraction error: {str(e)}")
 
             if st.button("Find Best Results"):
-                with st.spinner("Finding best results..."):
+                with st.spinner(f"Finding best results with {model_choice}..."):
                     try:
                         result = answer_question(
                             st.session_state["vector_store"],
                             "Identify which uploaded paper reports the best performance and explain the reported results.",
                             chat_history=st.session_state["chat_history"],
                             per_paper=2,
-                            total_k=max(top_k, 12)
+                            total_k=max(top_k, 12),
+                            model_name=model_choice
                         )
                         st.markdown("### Best Results")
                         st.write(result["answer"])
@@ -743,13 +744,14 @@ if st.session_state["papers_processed"] and st.session_state["vector_store"] is 
         st.markdown('<div class="section-sub">Generate one structured row per uploaded paper and export it as CSV.</div>', unsafe_allow_html=True)
 
         if st.button("Generate Comparison Table"):
-            with st.spinner("Building structured comparison table..."):
+            with st.spinner(f"Building structured comparison table with {model_choice}..."):
                 try:
                     result = generate_comparison_table(
                         st.session_state["vector_store"],
                         st.session_state["paper_names"],
                         per_paper=3,
-                        total_k=max(top_k, 15)
+                        total_k=max(top_k, 15),
+                        model_name=model_choice
                     )
 
                     comparison_df = parse_comparison_json(result["table_json"])
@@ -782,6 +784,38 @@ if st.session_state["papers_processed"] and st.session_state["vector_store"] is 
                     st.error(f"Comparison table generation error: {str(e)}")
 
         st.markdown("</div>", unsafe_allow_html=True)
+    with tab5:
+        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+        st.markdown('<div class="section-title">🔍 Related Paper Recommendations</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-sub">Find external research papers related to your uploaded PDFs using Semantic Scholar.</div>', unsafe_allow_html=True)
+
+        if st.button("Find 10 Related Papers"):
+            with st.spinner("Searching related papers..."):
+                try:
+                    paper_names = st.session_state.get("paper_names", [])
+
+                    query, results = recommend_related_papers(paper_names)
+
+                    st.markdown(f"### 🔎 Search Query")
+                    st.write(query)
+
+                    for paper in results:
+                        st.markdown(f"""
+                        <div class="glass-card">
+                            <h4>{paper['title']}</h4>
+                            <b>Authors:</b> {paper['authors']}<br>
+                            <b>Year:</b> {paper['year']} | <b>Venue:</b> {paper['venue']}<br>
+                            <b>Citations:</b> {paper['citations']}<br><br>
+                            {paper['abstract']}<br><br>
+                            <a href="{paper['url']}" target="_blank">📄 Read Paper</a>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                except Exception as e:
+                    st.error(f"Related paper search error: {str(e)}")
+
+        st.markdown("</div>", unsafe_allow_html=True)
+    
 
 else:
     st.info("Upload PDFs and click 'Process Papers' to start.")
